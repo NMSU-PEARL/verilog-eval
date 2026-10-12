@@ -153,6 +153,20 @@ AC_SUBST([problems_file])
 AC_MSG_NOTICE([using problems: ${problems_file}])
 
 #-------------------------------------------------------------------------
+# create problems.txt for netlist-to-rtl dataset
+#-------------------------------------------------------------------------
+
+if test "${task}" = "netlist-to-rtl" && ! test -f "${problems_file}"; then
+  AC_MSG_NOTICE([generating problems.txt for netlist-to-rtl dataset])
+  
+  # Create problems.txt by finding all prompt files
+  mkdir -p "${dataset_dir}"
+  find "${dataset_dir}" -name "Prob*_prompt.txt" | sed 's/_prompt\.txt$//' | xargs -n1 basename > "${problems_file}"
+  
+  AC_MSG_NOTICE([created ${problems_file}])
+fi
+
+#-------------------------------------------------------------------------
 # create prompt.mk file
 #-------------------------------------------------------------------------
 
@@ -189,7 +203,7 @@ cat > samples.mk \
 END
 
 sed -e '/^\s*$/d' -e "s/^\(.*\)$/\1_num_samples =  ${samples}/" \
-    ${problems_file} | column -t >> samples.mk
+    ${problems_file} | tr -d '\r' | column -t >> samples.mk
 
 echo "" >> samples.mk
 
