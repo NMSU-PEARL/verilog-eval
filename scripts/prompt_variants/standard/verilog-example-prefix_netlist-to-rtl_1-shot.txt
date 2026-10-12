@@ -1,0 +1,123 @@
+Here's an example of reverse engineering a gate-level netlist to readable RTL:
+
+Question:
+I would like you to reverse engineer a gate-level netlist back to its original RTL description.
+The netlist was synthesized from a Verilog RTL design.
+
+Please create an equivalent, clean, and readable RTL description that implements the same functionality.
+Your RTL should be written in standard Verilog or SystemVerilog using best practices.
+
+The module should be named 'TopModule' with the following interface:
+input a, input b, input cin, output cout, output sum
+
+Gate-level netlist:
+```verilog
+module RefModule(a, b, cin, cout, sum);
+  wire _00_;
+  wire _01_;
+  wire _02_;
+  wire _03_;
+  wire _04_;
+  wire _05_;
+  wire _06_;
+  wire _07_;
+  wire _08_;
+  wire _09_;
+  input a;
+  wire a;
+  input b;
+  wire b;
+  input cin;
+  wire cin;
+  output cout;
+  wire cout;
+  output sum;
+  wire sum;
+  NOT _10_ (
+    .A(cin),
+    .Y(_06_)
+  );
+  NAND _11_ (
+    .A(a),
+    .B(b),
+    .Y(_07_)
+  );
+  NOT _12_ (
+    .A(_07_),
+    .Y(_08_)
+  );
+  NOR _13_ (
+    .A(a),
+    .B(b),
+    .Y(_09_)
+  );
+  NOT _14_ (
+    .A(_09_),
+    .Y(_00_)
+  );
+  NOR _15_ (
+    .A(_08_),
+    .B(_09_),
+    .Y(_01_)
+  );
+  NAND _16_ (
+    .A(_07_),
+    .B(_00_),
+    .Y(_02_)
+  );
+  NOR _17_ (
+    .A(_06_),
+    .B(_02_),
+    .Y(_03_)
+  );
+  NAND _18_ (
+    .A(cin),
+    .B(_01_),
+    .Y(_04_)
+  );
+  NAND _19_ (
+    .A(_07_),
+    .B(_04_),
+    .Y(cout)
+  );
+  NOR _20_ (
+    .A(cin),
+    .B(_01_),
+    .Y(_05_)
+  );
+  NOR _21_ (
+    .A(_03_),
+    .B(_05_),
+    .Y(sum)
+  );
+endmodule
+```
+
+Answer:
+[BEGIN]
+module TopModule(
+  input a,
+  input b,
+  input cin,
+  output sum,
+  output cout
+);
+  // This module implements a full adder
+  // Looking at the structure and ports, I can identify this as a standard full adder circuit
+  
+  // Analyzing the netlist:
+  // _07_ = NAND(a,b) = ~(a & b)
+  // _08_ = NOT(_07_) = a & b 
+  // _09_ = NOR(a,b) = ~(a | b)
+  // _01_ = NOR(_08_,_09_) = ~((a & b) | ~(a | b)) = ~(a & b) & (a | b) = a ^ b
+  
+  // The sum in a full adder is a XOR b XOR cin
+  assign sum = a ^ b ^ cin;
+  
+  // The carry-out is high when at least two inputs are high
+  // This can be expressed as (a&b) | (b&cin) | (a&cin)
+  assign cout = (a & b) | (a & cin) | (b & cin);
+endmodule
+[DONE]
+
+Now, please solve the following problem:

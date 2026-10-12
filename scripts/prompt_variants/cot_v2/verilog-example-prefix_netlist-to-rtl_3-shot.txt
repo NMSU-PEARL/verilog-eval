@@ -1,0 +1,477 @@
+Here are examples of reverse engineering gate-level netlists to readable RTL:
+
+Question:
+I would like you to reverse engineer a gate-level netlist back to its original RTL description.
+The netlist was synthesized from a Verilog RTL design.
+
+## Analysis Instructions
+Please follow these steps to systematically analyze the netlist before generating RTL:
+
+1. **Interface Analysis**:
+   - Identify all inputs and outputs, including their bit widths
+   - Determine the possible function based on the interface
+   - Note clock, reset, and control signals
+
+2. **Hierarchical Decomposition**:
+   - Group flip-flops that share clock and enable conditions
+   - Identify clear signal boundaries between logic groups
+   - Locate potential module boundaries and interfaces between components
+   - For each identified functional block:
+     * What are its inputs and outputs?
+     * What function does it perform?
+     * How does it connect to other blocks?
+
+3. **Circuit Pattern Recognition**:
+   - Look for these common circuit patterns:
+     * Counters: Register with feedback through incrementer/adder
+     * Shift registers: Bit-to-bit connections in sequence
+     * FSMs: State register with next-state logic that depends on inputs/current state
+     * Memory elements: Arrays of flip-flops with address decoders
+     * ALUs: Multiplexed arithmetic/logic operations
+     * Decoders/Encoders: One-hot or binary conversion logic
+     * Comparators: Equality or magnitude comparison circuits
+   - When you identify a pattern, extract:
+     * Parameterization (bit widths, counter limits)
+     * Control signals (enable, direction, mode)
+     * Special conditions (overflow, underflow, terminal count)
+
+4. **Progressive Signal Tracing**:
+   - Forward Analysis:
+     * Start from primary inputs and clock signals
+     * Follow signal propagation through the circuit
+     * Document transformations at each step
+   - Backward Analysis:
+     * Start from primary outputs
+     * Determine which logic gates drive them
+     * Trace backward to identify critical paths
+   - Critical Signal Focus:
+     * Identify enable, select, and control signals first
+     * Determine what conditions cause them to change
+     * Document their influence on other signals
+   - For each key signal identified:
+     * What conditions cause it to change?
+     * What other signals does it influence?
+     * What is its logical meaning in the design?
+
+5. **Context Management for Large Designs**:
+   - Checkpoint Summaries:
+     * After analyzing each major section, summarize findings
+     * "At this point, we've identified [component] with [function]"
+     * Maintain a running model of the overall design
+   - Named Reference Points:
+     * As you identify components, give them meaningful names
+     * "The arrangement of gates _10_ through _15_ forms an incrementer"
+     * Use these named references throughout your analysis
+   - Progressive Abstraction:
+     * Start with concrete gate-level understanding
+     * Build increasingly abstract functional understanding
+     * Document the logical purpose of each identified component
+
+6. **Design Intent Recovery**:
+   - For each circuit component identified, consider:
+     * Why would a designer include this component?
+     * What is the most intuitive way to express its function in RTL?
+     * How can we name signals to reflect their purpose?
+   - Look for synthesis optimizations like:
+     * Shared logic between multiple outputs
+     * Constants propagated through the design
+     * Boolean expression simplifications
+   - When reconstructing RTL, focus on the original design intent, not the optimized implementation
+
+7. **RTL Generation**:
+   - Create clean, readable RTL code that implements the same functionality
+   - Use meaningful signal names that reflect purpose
+   - Use behavioral constructs where appropriate (always blocks, case statements)
+   - Prefer higher-level operators (arithmetic, shifts) over gate-level logic when intent is clear
+   - Include concise comments explaining key design decisions or non-obvious functionality
+
+Please create an equivalent, clean, and readable RTL description that implements the same functionality.
+Your RTL should be written in standard Verilog or SystemVerilog using best practices.
+
+The module should be named 'TopModule' with the following interface:
+input [2:0] in, output [1:0] out
+
+Gate-level netlist:
+```verilog
+module RefModule(in, out);
+  wire _0_;
+  wire _1_;
+  wire _2_;
+  input [2:0] in;
+  output [1:0] out;
+  assign _0_ = ~in[1];
+  assign _1_ = ~(in[0] & in[2]);
+  assign _2_ = ~(in[0] ^ in[2]);
+  assign out[0] = ~(in[1] ^ _2_);
+  assign out[1] = ~((_0_ | _2_) & _1_);
+endmodule
+```
+
+Answer:
+[BEGIN]
+module TopModule(
+  input [2:0] in,
+  output [1:0] out
+);
+  // Step 1: Interface Analysis
+  // - 3-bit input and 2-bit output
+  // - This could be a decoder, encoder, or counter
+  // - Output range of 0-3 suggests counting something in a 3-bit input
+
+  // Step 2: Circuit Decomposition
+  // - This is a purely combinational circuit
+  // - No sequential elements detected
+  
+  // Step 3: Progressive Signal Tracing
+  // Forward analysis from inputs:
+  // _0_ = ~in[1]
+  // _1_ = ~(in[0] & in[2])
+  // _2_ = ~(in[0] ^ in[2]) = in[0] ~^ in[2] = (in[0] == in[2])
+  // out[0] = ~(in[1] ^ _2_) = in[1] ~^ _2_ = in[1] ~^ (in[0] == in[2])
+  // out[1] = ~((_0_ | _2_) & _1_) = ~((~in[1] | (in[0] == in[2])) & ~(in[0] & in[2]))
+  
+  // Step 4: Pattern Recognition
+  // Testing with all input combinations:
+  // 3'b000 -> 2'b00 (0 ones)
+  // 3'b001 -> 2'b01 (1 one)
+  // 3'b010 -> 2'b01 (1 one)
+  // 3'b011 -> 2'b10 (2 ones)
+  // 3'b100 -> 2'b01 (1 one)
+  // 3'b101 -> 2'b10 (2 ones)
+  // 3'b110 -> 2'b10 (2 ones)
+  // 3'b111 -> 2'b11 (3 ones)
+  
+  // Step 5: Design Intent Recovery
+  // This clearly implements a population count (number of 1's) circuit
+  // It counts the number of 1's in the 3-bit input vector
+  // and outputs the count as a 2-bit binary number (0-3)
+  
+  // Step 6: RTL Generation
+  // Clean, readable implementation leveraging the insight that:
+  // - LSB of count is 1 if odd number of 1's (parity function)
+  // - MSB is 1 if at least 2 bits are high (using logical AND/OR)
+  
+  // Implementation using logical operators that clearly show intent:
+  assign out[0] = in[0] ^ in[1] ^ in[2]; // LSB is 1 if odd number of 1's
+  assign out[1] = (in[0] & in[1]) | (in[1] & in[2]) | (in[0] & in[2]); // MSB is 1 if ≥2 bits are 1
+  
+  // Alternative implementation using + operator (which counts bits)
+  // assign out = in[0] + in[1] + in[2];
+endmodule
+[DONE]
+
+Question:
+I would like you to reverse engineer a gate-level netlist back to its original RTL description.
+The netlist was synthesized from a Verilog RTL design.
+
+## Analysis Instructions
+Please follow these steps to systematically analyze the netlist before generating RTL:
+
+1. **Interface Analysis**:
+   - Identify all inputs and outputs, including their bit widths
+   - Determine the possible function based on the interface
+   - Note clock, reset, and control signals
+
+2. **Hierarchical Decomposition**:
+   - Group flip-flops that share clock and enable conditions
+   - Identify clear signal boundaries between logic groups
+   - Locate potential module boundaries and interfaces between components
+   - For each identified functional block:
+     * What are its inputs and outputs?
+     * What function does it perform?
+     * How does it connect to other blocks?
+
+3. **Circuit Pattern Recognition**:
+   - Look for these common circuit patterns:
+     * Counters: Register with feedback through incrementer/adder
+     * Shift registers: Bit-to-bit connections in sequence
+     * FSMs: State register with next-state logic that depends on inputs/current state
+     * Memory elements: Arrays of flip-flops with address decoders
+     * ALUs: Multiplexed arithmetic/logic operations
+     * Decoders/Encoders: One-hot or binary conversion logic
+     * Comparators: Equality or magnitude comparison circuits
+   - When you identify a pattern, extract:
+     * Parameterization (bit widths, counter limits)
+     * Control signals (enable, direction, mode)
+     * Special conditions (overflow, underflow, terminal count)
+
+4. **Progressive Signal Tracing**:
+   - Forward Analysis:
+     * Start from primary inputs and clock signals
+     * Follow signal propagation through the circuit
+     * Document transformations at each step
+   - Backward Analysis:
+     * Start from primary outputs
+     * Determine which logic gates drive them
+     * Trace backward to identify critical paths
+   - Critical Signal Focus:
+     * Identify enable, select, and control signals first
+     * Determine what conditions cause them to change
+     * Document their influence on other signals
+   - For each key signal identified:
+     * What conditions cause it to change?
+     * What other signals does it influence?
+     * What is its logical meaning in the design?
+
+5. **Context Management for Large Designs**:
+   - Checkpoint Summaries:
+     * After analyzing each major section, summarize findings
+     * "At this point, we've identified [component] with [function]"
+     * Maintain a running model of the overall design
+   - Named Reference Points:
+     * As you identify components, give them meaningful names
+     * "The arrangement of gates _10_ through _15_ forms an incrementer"
+     * Use these named references throughout your analysis
+   - Progressive Abstraction:
+     * Start with concrete gate-level understanding
+     * Build increasingly abstract functional understanding
+     * Document the logical purpose of each identified component
+
+6. **Design Intent Recovery**:
+   - For each circuit component identified, consider:
+     * Why would a designer include this component?
+     * What is the most intuitive way to express its function in RTL?
+     * How can we name signals to reflect their purpose?
+   - Look for synthesis optimizations like:
+     * Shared logic between multiple outputs
+     * Constants propagated through the design
+     * Boolean expression simplifications
+   - When reconstructing RTL, focus on the original design intent, not the optimized implementation
+
+7. **RTL Generation**:
+   - Create clean, readable RTL code that implements the same functionality
+   - Use meaningful signal names that reflect purpose
+   - Use behavioral constructs where appropriate (always blocks, case statements)
+   - Prefer higher-level operators (arithmetic, shifts) over gate-level logic when intent is clear
+   - Include concise comments explaining key design decisions or non-obvious functionality
+
+Please create an equivalent, clean, and readable RTL description that implements the same functionality.
+Your RTL should be written in standard Verilog or SystemVerilog using best practices.
+
+The module should be named 'TopModule' with the following interface:
+input [99:0] a, input [99:0] b, input sel, output [99:0] out
+
+Gate-level netlist:
+```verilog
+module RefModule(a, b, sel, out);
+  input [99:0] a;
+  input [99:0] b;
+  output [99:0] out;
+  input sel;
+  assign out[54] = sel ? b[54] : a[54];
+  assign out[55] = sel ? b[55] : a[55];
+  assign out[56] = sel ? b[56] : a[56];
+  assign out[57] = sel ? b[57] : a[57];
+  assign out[58] = sel ? b[58] : a[58];
+  assign out[59] = sel ? b[59] : a[59];
+  // ... many more individual bit assignments ...
+  assign out[0] = sel ? b[0] : a[0];
+  assign out[1] = sel ? b[1] : a[1];
+  assign out[2] = sel ? b[2] : a[2];
+  // ... and so on for all 100 bits ...
+endmodule
+```
+
+Answer:
+[BEGIN]
+module TopModule(
+  input [99:0] a,
+  input [99:0] b,
+  input sel,
+  output [99:0] out
+);
+  // Step 1: Interface Analysis
+  // - Two 100-bit inputs (a, b), one 1-bit control input (sel), and one 100-bit output (out)
+  // - Interface suggests a multiplexer or selector circuit
+  
+  // Step 2: Circuit Decomposition
+  // - This is a purely combinational circuit (no flip-flops or latches)
+  // - The circuit consists of 100 independent bit-multiplexers
+  
+  // Step 3: Progressive Signal Tracing
+  // - For each output bit out[i], the value is either a[i] or b[i] based on sel
+  // - When sel=0, out[i]=a[i]; when sel=1, out[i]=b[i]
+  
+  // Step 4: Pattern Recognition
+  // - This is clearly a 2:1 multiplexer pattern repeated 100 times
+  // - Each bit is selected independently but using the same control signal
+  
+  // Step 5: Design Intent Recovery
+  // - The designer intended to create a 100-bit wide 2:1 multiplexer
+  // - The synthesizer expanded this into 100 individual bit-multiplexers
+  // - The most intuitive representation is a single vector assignment with ternary operator
+  
+  // Step 6: RTL Generation
+  // Simple, clean vector-wide implementation of a 2:1 multiplexer
+  assign out = sel ? b : a;
+  
+  // Note: The gate-level netlist has 100 separate assignments,
+  // but the original designer would have used this single vector assignment
+endmodule
+[DONE]
+
+Question:
+I would like you to reverse engineer a gate-level netlist back to its original RTL description.
+The netlist was synthesized from a Verilog RTL design.
+
+## Analysis Instructions
+Please follow these steps to systematically analyze the netlist before generating RTL:
+
+1. **Interface Analysis**:
+   - Identify all inputs and outputs, including their bit widths
+   - Determine the possible function based on the interface
+   - Note clock, reset, and control signals
+
+2. **Hierarchical Decomposition**:
+   - Group flip-flops that share clock and enable conditions
+   - Identify clear signal boundaries between logic groups
+   - Locate potential module boundaries and interfaces between components
+   - For each identified functional block:
+     * What are its inputs and outputs?
+     * What function does it perform?
+     * How does it connect to other blocks?
+
+3. **Circuit Pattern Recognition**:
+   - Look for these common circuit patterns:
+     * Counters: Register with feedback through incrementer/adder
+     * Shift registers: Bit-to-bit connections in sequence
+     * FSMs: State register with next-state logic that depends on inputs/current state
+     * Memory elements: Arrays of flip-flops with address decoders
+     * ALUs: Multiplexed arithmetic/logic operations
+     * Decoders/Encoders: One-hot or binary conversion logic
+     * Comparators: Equality or magnitude comparison circuits
+   - When you identify a pattern, extract:
+     * Parameterization (bit widths, counter limits)
+     * Control signals (enable, direction, mode)
+     * Special conditions (overflow, underflow, terminal count)
+
+4. **Progressive Signal Tracing**:
+   - Forward Analysis:
+     * Start from primary inputs and clock signals
+     * Follow signal propagation through the circuit
+     * Document transformations at each step
+   - Backward Analysis:
+     * Start from primary outputs
+     * Determine which logic gates drive them
+     * Trace backward to identify critical paths
+   - Critical Signal Focus:
+     * Identify enable, select, and control signals first
+     * Determine what conditions cause them to change
+     * Document their influence on other signals
+   - For each key signal identified:
+     * What conditions cause it to change?
+     * What other signals does it influence?
+     * What is its logical meaning in the design?
+
+5. **Context Management for Large Designs**:
+   - Checkpoint Summaries:
+     * After analyzing each major section, summarize findings
+     * "At this point, we've identified [component] with [function]"
+     * Maintain a running model of the overall design
+   - Named Reference Points:
+     * As you identify components, give them meaningful names
+     * "The arrangement of gates _10_ through _15_ forms an incrementer"
+     * Use these named references throughout your analysis
+   - Progressive Abstraction:
+     * Start with concrete gate-level understanding
+     * Build increasingly abstract functional understanding
+     * Document the logical purpose of each identified component
+
+6. **Design Intent Recovery**:
+   - For each circuit component identified, consider:
+     * Why would a designer include this component?
+     * What is the most intuitive way to express its function in RTL?
+     * How can we name signals to reflect their purpose?
+   - Look for synthesis optimizations like:
+     * Shared logic between multiple outputs
+     * Constants propagated through the design
+     * Boolean expression simplifications
+   - When reconstructing RTL, focus on the original design intent, not the optimized implementation
+
+7. **RTL Generation**:
+   - Create clean, readable RTL code that implements the same functionality
+   - Use meaningful signal names that reflect purpose
+   - Use behavioral constructs where appropriate (always blocks, case statements)
+   - Prefer higher-level operators (arithmetic, shifts) over gate-level logic when intent is clear
+   - Include concise comments explaining key design decisions or non-obvious functionality
+
+Please create an equivalent, clean, and readable RTL description that implements the same functionality.
+Your RTL should be written in standard Verilog or SystemVerilog using best practices.
+
+The module should be named 'TopModule' with the following interface:
+input a, input b, input cin, output cout, output sum
+
+Gate-level netlist:
+```verilog
+module RefModule(a, b, cin, cout, sum);
+  wire _0_;
+  wire _1_;
+  wire _2_;
+  input a;
+  input b;
+  input cin;
+  output cout;
+  output sum;
+  assign _0_ = ~b;
+  assign _1_ = ~(a & cin);
+  assign _2_ = ~(a ^ cin);
+  assign sum = ~(b ^ _2_);
+  assign cout = ~((_0_ | _2_) & _1_);
+endmodule
+```
+
+Answer:
+[BEGIN]
+module TopModule(
+  input a,
+  input b,
+  input cin,
+  output sum,
+  output cout
+);
+  // Step 1: Interface Analysis
+  // - Three single-bit inputs (a, b, cin) and two single-bit outputs (sum, cout)
+  // - This interface matches a standard full adder
+  // - No clock signals indicates this is combinational logic
+  
+  // Step 2: Circuit Decomposition
+  // - Purely combinational circuit with no sequential elements
+  
+  // Step 3: Progressive Signal Tracing
+  // Forward analysis starting from inputs:
+  // _0_ = ~b
+  // _1_ = ~(a & cin)
+  // _2_ = ~(a ^ cin) = a ~^ cin = (a == cin)
+  // sum = ~(b ^ _2_) = b ~^ _2_ = b ~^ (a ~^ cin)
+  // cout = ~((_0_ | _2_) & _1_) = ~((~b | (a ~^ cin)) & ~(a & cin))
+  
+  // Step 4: Pattern Recognition
+  // Working through the boolean algebra:
+  // sum = b ~^ (a ~^ cin) = b ^ (a ^ cin) = a ^ b ^ cin
+  // cout = ~((~b | (a ~^ cin)) & ~(a & cin))
+  //      = ~(~b & ~(a & cin)) | ~((a ~^ cin) & ~(a & cin))
+  //      = (b | (a & cin)) & ((a ^ cin) | (a & cin))
+  //      = (b | (a & cin)) & (a | cin)
+  //      = b & (a | cin) | (a & cin)
+  //      = (a & b) | (b & cin) | (a & cin)
+  
+  // Step 5: Design Intent Recovery
+  // This circuit implements a full adder that adds three bits
+  // The sum output is the XOR of all inputs (odd number of 1's)
+  // The cout output is high when at least two inputs are 1
+  
+  // Step 6: RTL Generation
+  // Clean implementation using standard full adder equations:
+  
+  // Sum is a XOR b XOR cin (1 when odd number of inputs are 1)
+  assign sum = a ^ b ^ cin;
+  
+  // Carry-out is generated when at least two inputs are 1
+  assign cout = (a & b) | (a & cin) | (b & cin);
+  
+  // Alternative implementation using standard addition:
+  // assign {cout, sum} = a + b + cin;
+endmodule
+[DONE]
+
+Now, please solve the following problem:

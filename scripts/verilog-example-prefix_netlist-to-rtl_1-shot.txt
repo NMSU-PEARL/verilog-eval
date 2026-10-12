@@ -1,0 +1,154 @@
+Here's an example of reverse engineering a gate-level netlist to readable RTL:
+
+Question:
+I would like you to reverse engineer a gate-level netlist back to its original RTL description.
+The netlist was synthesized from a Verilog RTL design.
+
+## Analysis Instructions
+Please follow these steps to systematically analyze the netlist before generating RTL:
+
+1. **Interface Analysis**:
+   - Identify all inputs and outputs, including their bit widths
+   - Determine the possible function based on the interface
+
+2. **Circuit Decomposition**:
+   - Identify sequential elements (flip-flops, latches, registers)
+   - Separate combinational logic blocks
+   - Look for recognizable patterns (adders, multiplexers, decoders, etc.)
+
+3. **Functional Analysis**:
+   - For combinational circuits, determine the boolean function being implemented
+   - For sequential circuits, identify state transitions and control logic
+   - Consider the possible high-level operations like counting, shifting, or arithmetic
+
+4. **RTL Generation**:
+   - Create clean, readable RTL code that implements the same functionality
+   - Use meaningful signal names
+   - Use behavioral constructs where appropriate
+
+Please create an equivalent, clean, and readable RTL description that implements the same functionality.
+Your RTL should be written in standard Verilog or SystemVerilog using best practices.
+
+The module should be named 'TopModule' with the following interface:
+input a, input b, input cin, output cout, output sum
+
+Gate-level netlist:
+```verilog
+module RefModule(a, b, cin, cout, sum);
+  wire _00_;
+  wire _01_;
+  wire _02_;
+  wire _03_;
+  wire _04_;
+  wire _05_;
+  wire _06_;
+  wire _07_;
+  wire _08_;
+  wire _09_;
+  input a;
+  wire a;
+  input b;
+  wire b;
+  input cin;
+  wire cin;
+  output cout;
+  wire cout;
+  output sum;
+  wire sum;
+  NOT _10_ (
+    .A(cin),
+    .Y(_06_)
+  );
+  NAND _11_ (
+    .A(a),
+    .B(b),
+    .Y(_07_)
+  );
+  NOT _12_ (
+    .A(_07_),
+    .Y(_08_)
+  );
+  NOR _13_ (
+    .A(a),
+    .B(b),
+    .Y(_09_)
+  );
+  NOT _14_ (
+    .A(_09_),
+    .Y(_00_)
+  );
+  NOR _15_ (
+    .A(_08_),
+    .B(_09_),
+    .Y(_01_)
+  );
+  NAND _16_ (
+    .A(_07_),
+    .B(_00_),
+    .Y(_02_)
+  );
+  NOR _17_ (
+    .A(_06_),
+    .B(_02_),
+    .Y(_03_)
+  );
+  NAND _18_ (
+    .A(cin),
+    .B(_01_),
+    .Y(_04_)
+  );
+  NAND _19_ (
+    .A(_07_),
+    .B(_04_),
+    .Y(cout)
+  );
+  NOR _20_ (
+    .A(cin),
+    .B(_01_),
+    .Y(_05_)
+  );
+  NOR _21_ (
+    .A(_03_),
+    .B(_05_),
+    .Y(sum)
+  );
+endmodule
+```
+
+Answer:
+[BEGIN]
+module TopModule(
+  input a,
+  input b,
+  input cin,
+  output sum,
+  output cout
+);
+  // Step 1: Interface Analysis
+  // - Three single-bit inputs (a, b, cin) and two single-bit outputs (sum, cout)
+  // - This interface matches a standard full adder
+
+  // Step 2: Circuit Decomposition
+  // - This is a purely combinational circuit (no flip-flops or latches)
+  // - The netlist implements logic gates that form a full adder
+
+  // Step 3: Functional Analysis
+  // Tracing through the netlist:
+  // _07_ = NAND(a,b) = ~(a & b)
+  // _08_ = NOT(_07_) = a & b 
+  // _09_ = NOR(a,b) = ~(a | b)
+  // _00_ = NOT(_09_) = a | b
+  // _01_ = NOR(_08_,_09_) = ~((a & b) | ~(a | b)) = ~(a & b) & (a | b) = a ^ b
+  // This is a XOR function between a and b
+
+  // Looking at the overall circuit structure and analyzing the logic:
+  // The sum in a full adder is a XOR b XOR cin
+  assign sum = a ^ b ^ cin;
+  
+  // The carry-out is high when at least two inputs are high
+  // This can be expressed as (a&b) | (b&cin) | (a&cin)
+  assign cout = (a & b) | (a & cin) | (b & cin);
+endmodule
+[DONE]
+
+Now, please solve the following problem:
