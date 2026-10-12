@@ -8,3 +8,8 @@
 build*/
 autom4te.cache/
 
+# Experiment run directories created by create_quartile_experiments.sh
+q[1-4]_*/
+
+__pycache__/
+
