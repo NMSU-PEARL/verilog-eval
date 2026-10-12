@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #=========================================================================
 # sv-iv-analyze [options] problems
 #=========================================================================
@@ -23,11 +23,12 @@ import sys
 import os
 import re
 import glob
+import math
 
 from collections import OrderedDict
 from dataclasses import dataclass
 
-from langchain.schema   import SystemMessage, HumanMessage
+from langchain.schema.messages import SystemMessage, HumanMessage
 
 #-------------------------------------------------------------------------
 # Command line processing
@@ -80,6 +81,44 @@ class Results:
     while sample > len(self.data[problem]):
       self.data[problem].append(ResultRecord())
     self.data[problem][sample-1] = record
+    
+  def calculate_pass_at_k(self, k):
+    """
+    Calculate pass@k metric where:
+    Pass@k = (1/N_P) * Σ[I(at least one of k candidates for problem i is correct)]
+    
+    This calculates the probability of solving a problem if we're allowed to sample k times
+    and take the best answer.
+    
+    Args:
+      k: Number of samples to consider per problem
+      
+    Returns:
+      float: The pass@k metric (0.0 to 1.0)
+    """
+    if k <= 0:
+      return 0.0
+      
+    problems_count = len(self.data)
+    if problems_count == 0:
+      return 0.0
+      
+    problems_passed = 0
+    
+    for problem, records in self.data.items():
+      # Check if at least one of the first k samples passes for this problem
+      problem_passed = False
+      samples_to_check = min(k, len(records))
+      
+      for i in range(samples_to_check):
+        if records[i].passfail == ".":
+          problem_passed = True
+          break
+      
+      if problem_passed:
+        problems_passed += 1
+    
+    return problems_passed / problems_count
 
   def print( self ):
 
@@ -167,8 +206,20 @@ class Results:
       for row_str0,row_str1 in zip(row_strs[:half],row_strs[half:]):
         print(row_str0,"",row_str1)
 
+    # Calculate pass@k metrics for common k values
+    max_samples = max([len(row) for row in self.data.values()]) if self.data else 0
+    k_values = [1, min(max_samples, 5), min(max_samples, 10), max_samples]
+    k_values = sorted(list(set(k_values)))  # Remove duplicates and sort
+    
     print("")
     print(f"pass_rate             = {(pass_rate_sum/len(self.data)):>10.2f}")
+    
+    # Print pass@k metrics
+    for k in k_values:
+        pass_at_k = self.calculate_pass_at_k(k)
+        percentage = pass_at_k * 100
+        print(f"pass@{k:<18} = {percentage:>10.2f}%")
+    
     print(f"avg_gini_simpson_idx  = {(total_gsidx/len(self.data)):>10.2f}")
     print(f"total_prompt_tokens   = {total_prompt_tokens:>10}")
     print(f"total_resp_tokens     = {total_resp_tokens:>10}")
@@ -181,19 +232,41 @@ class Results:
 
   def write_csv( self, csv_filename ):
     with open( csv_filename, 'w' ) as file:
+      # Calculate common k values once
+      max_samples = max([len(row) for row in self.data.values()]) if self.data else 0
+      k_values = [1, min(max_samples, 5), min(max_samples, 10), max_samples]
+      k_values = sorted(list(set(k_values)))  # Remove duplicates and sort
+      
+      # Write header with pass@k columns
+      pass_k_headers = [f"pass@{k}" for k in k_values]
+      header = f"problem,pass,samples,pass_rate,{','.join(pass_k_headers)},results\n"
+      file.write(header)
+      
+      # Write data for each problem
       for problem,row in self.data.items():
-
         npass = 0
         for idx,record in enumerate(row):
           if record.passfail == ".":
             npass += 1
 
-        nsamples      = len(row)
-        pass_rate     = int((npass/nsamples)*100)
-
-        row_str = ",".join([record.passfail for record in row])
-
-        file.write(f"{problem},{npass},{nsamples},{pass_rate/100.0},{row_str}\n")
+        nsamples = len(row)
+        pass_rate = int((npass/nsamples)*100) / 100.0
+        
+        # Calculate pass@k values for this problem
+        pass_at_k_values = []
+        for k in k_values:
+          # Check if at least one of the first k samples passes for this problem
+          samples_to_check = min(k, len(row))
+          problem_passed = False
+          for i in range(samples_to_check):
+            if row[i].passfail == ".":
+              problem_passed = True
+              break
+          pass_at_k_values.append("1" if problem_passed else "0")
+        
+        results_str = ",".join([record.passfail for record in row])
+        
+        file.write(f"{problem},{npass},{nsamples},{pass_rate},{','.join(pass_at_k_values)},{results_str}\n")
 
 #-------------------------------------------------------------------------
 # analyze_result
@@ -336,15 +409,19 @@ def main():
   problems = opts.problems
   if not problems:
     problems = glob.glob(f"Prob*")
-
+  
   # Iterate through problem result directories
 
   results = Results( opts.wide )
 
   for problem in sorted(problems):
 
-    problem = problem.rstrip("/")
-    for filename in glob.glob(f"{problem}/{problem}_sample*-sv-iv-test.log"):
+    # Strip both trailing slashes and any carriage returns
+    problem = problem.rstrip("/\r\n")
+    log_pattern = f"{problem}/{problem}_sample*-sv-iv-test.log"
+    log_files = glob.glob(log_pattern)
+    
+    for filename in log_files:
 
       # Extract the sample number
 
@@ -357,11 +434,31 @@ def main():
       verilog      = f"{problem}/{problem}_sample{nsample:02}.sv"
       analyze_result( results, problem, nsample, generate_log, compile_log, verilog )
 
-  # Print summary
+  # Print summary with pass@k metrics
 
   results.print()
   if opts.csv:
     results.write_csv( opts.csv )
+    
+    # Additionally, write a summary row with overall pass@k metrics
+    with open(opts.csv, 'a') as file:
+      max_samples = max([len(row) for row in results.data.values()]) if results.data else 0
+      k_values = [1, min(max_samples, 5), min(max_samples, 10), max_samples]
+      k_values = sorted(list(set(k_values)))  # Remove duplicates and sort
+      
+      # Calculate overall pass@k metrics
+      pass_at_k_values = []
+      for k in k_values:
+        pass_at_k = results.calculate_pass_at_k(k)
+        pass_at_k_values.append(f"{pass_at_k:.4f}")
+      
+      # Calculate overall pass rate
+      total_pass = sum([sum(1 for r in row if r.passfail == ".") for row in results.data.values()])
+      total_samples = sum([len(row) for row in results.data.values()])
+      overall_pass_rate = total_pass / total_samples if total_samples > 0 else 0
+      
+      # Write the summary row
+      file.write(f"SUMMARY,{total_pass},{total_samples},{overall_pass_rate:.4f},{','.join(pass_at_k_values)},\n")
 
 main()
 
