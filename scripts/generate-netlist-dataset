@@ -1,0 +1,196 @@
+#!/usr/bin/env python3
+#=========================================================================
+# generate-netlist-dataset [options]
+#=========================================================================
+#
+#  -v --verbose        Display verbose output
+#  -h --help           Display this message
+#  -p --problem        Problem number/ID to process (default: all)
+#  -d --dataset        Source dataset (default: spec-to-rtl)
+#  -l --lib            Cell library path for synthesis (default: /usr/share/yosys/cmos_cells.lib)
+#
+# Generate netlist-to-rtl dataset from existing problems with proper gate-level mapping
+#
+# SPDX-License-Identifier: MIT
+#
+
+import argparse
+import sys
+import os
+import glob
+import subprocess
+import re
+
+#-------------------------------------------------------------------------
+# Command line processing
+#-------------------------------------------------------------------------
+
+class ArgumentParserWithCustomError(argparse.ArgumentParser):
+  def error( self, msg = "" ):
+    if ( msg ): print("\n ERROR: %s" % msg)
+    print("")
+    file = open( sys.argv[0] )
+    for ( lineno, line ) in enumerate( file ):
+      if ( line[0] != '#' ): sys.exit(msg != "")
+      if ( (lineno == 2) or (lineno >= 4) ): print( line[1:].rstrip("\n") )
+
+def parse_cmdline():
+  p = ArgumentParserWithCustomError( add_help=False )
+
+  p.add_argument( "-h", "--help",      action="store_true" )
+  p.add_argument( "-v", "--verbose",   action="store_true" )
+  p.add_argument( "-p", "--problem",   type=str )
+  p.add_argument( "-d", "--dataset",   type=str, default="spec-to-rtl" )
+  p.add_argument( "-l", "--lib",       type=str, default="/usr/share/yosys/cmos_cells.lib" )
+
+  opts = p.parse_args()
+  if opts.help: p.error()
+  return opts
+
+#-------------------------------------------------------------------------
+# Problem Processing
+#-------------------------------------------------------------------------
+
+def process_problem(problem_path, verbose=False, lib_path=None):
+  """Process a single RTL problem, generating netlist and prompt"""
+  
+  problem_name = os.path.basename(problem_path).replace("_ref.sv", "")
+  problem_num = problem_name.split("_")[0][4:]  # Extract number from "Prob001_..."
+  
+  if verbose:
+    print(f"Processing {problem_name}...")
+  
+  # Define output paths
+  output_dir = f"dataset_netlist-to-rtl"
+  os.makedirs(output_dir, exist_ok=True)
+  
+  netlist_path = f"{output_dir}/{problem_name}_netlist.v"
+  test_path = f"dataset_spec-to-rtl/{problem_name}_test.sv"
+  
+  # Skip if netlist already exists
+  if os.path.exists(netlist_path):
+    if verbose:
+      print(f"  Netlist already exists, skipping: {netlist_path}")
+    return True
+  
+  # Check if test file exists
+  if not os.path.exists(test_path):
+    print(f"Error: Test file not found: {test_path}")
+    return False
+  
+  # Run synthesis
+  synth_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "synth-to-netlist")
+  synth_cmd = [synth_script, "-t", "RefModule"]
+  
+  # Add library path if specified
+  if lib_path:
+    synth_cmd.extend(["-l", lib_path])
+    
+  # Add SystemVerilog flag for .sv files
+  if problem_path.endswith(".sv"):
+    synth_cmd.append("-s")
+    
+  if verbose:
+    synth_cmd.append("-v")
+    
+  synth_cmd.extend([problem_path, netlist_path])
+  
+  if verbose:
+    print(f"  Running: {' '.join(synth_cmd)}")
+  
+  try:
+    result = subprocess.run(synth_cmd, capture_output=not verbose, text=True)
+    
+    if result.returncode != 0:
+      print(f"Error synthesizing {problem_name}: {result.stderr if not verbose else ''}")
+      return False
+  except Exception as e:
+    print(f"Error running synthesis: {e}")
+    return False
+  
+  # Create prompt file
+  prompt_path = f"{output_dir}/{problem_name}_prompt.txt"
+  
+  with open(netlist_path, 'r') as f:
+    netlist_content = f.read()
+  
+  # Extract ports from netlist
+  port_lines = []
+  module_match = re.search(r'module\s+RefModule\s*\((.*?)\);', netlist_content, re.DOTALL)
+  if module_match:
+    port_section = module_match.group(1)
+    port_lines = [line.strip() for line in port_section.split('\n') if line.strip()]
+  
+  with open(prompt_path, 'w') as f:
+    f.write(f"""
+I would like you to reverse engineer a gate-level netlist back to its original RTL description.
+The netlist was synthesized from a Verilog RTL design.
+
+Please create an equivalent, clean, and readable RTL description that implements the same functionality.
+Your RTL should be written in standard Verilog or SystemVerilog using best practices.
+
+The module should be named 'TopModule' with the following interface:
+{', '.join(port_lines)}
+
+Gate-level netlist:
+```verilog
+{netlist_content}
+```
+""")
+  
+  # Create reference test for the prompt
+  test_ref_path = f"{output_dir}/{problem_name}_test.sv"
+  with open(test_path, 'r') as src, open(test_ref_path, 'w') as dst:
+    content = src.read()
+    dst.write(content)
+  
+  if verbose:
+    print(f"  Created: {netlist_path}")
+    print(f"  Created: {prompt_path}")
+    print(f"  Created: {test_ref_path}")
+  
+  return True
+
+#-------------------------------------------------------------------------
+# Main
+#-------------------------------------------------------------------------
+
+def main():
+  opts = parse_cmdline()
+  
+  # Get list of problems to process
+  source_dir = f"dataset_{opts.dataset}"
+  
+  # Check if cell library exists
+  if opts.verbose and opts.lib:
+    print(f"Using cell library: {opts.lib}")
+    
+  if opts.lib and not os.path.exists(opts.lib):
+    print(f"Error: Cell library not found: {opts.lib}")
+    print("Please specify a valid cell library path with -l/--lib")
+    return 1
+  
+  if opts.problem:
+    # Process specific problem
+    problem_pattern = f"{source_dir}/Prob{opts.problem}_*_ref.sv"
+    problems = glob.glob(problem_pattern)
+    if not problems:
+      print(f"Error: No problems found matching: {problem_pattern}")
+      return 1
+  else:
+    # Process all problems
+    problems = sorted(glob.glob(f"{source_dir}/Prob*_ref.sv"))
+  
+  if opts.verbose:
+    print(f"Found {len(problems)} problems to process")
+  
+  success_count = 0
+  for problem in problems:
+    if process_problem(problem, opts.verbose, opts.lib):
+      success_count += 1
+  
+  print(f"Processed {success_count} out of {len(problems)} problems successfully")
+  return 0
+
+if __name__ == "__main__":
+  sys.exit(main())

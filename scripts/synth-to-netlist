@@ -1,0 +1,132 @@
+#!/usr/bin/env python3
+#=========================================================================
+# synth-to-netlist [options] input-file output-file
+#=========================================================================
+#
+#  -v --verbose        Display verbose output
+#  -h --help           Display this message
+#  -t --top            Top module name (default: RefModule)
+#  -l --lib            Cell library path (default: /usr/share/yosys/cmos_cells.lib)
+#  -s --sv             Treat input as SystemVerilog (default: false)
+#
+# Synthesize RTL to gate-level netlist using Yosys with proper technology mapping
+#
+# SPDX-License-Identifier: MIT
+#
+
+import argparse
+import sys
+import os
+import re
+import subprocess
+import tempfile
+
+#-------------------------------------------------------------------------
+# Command line processing
+#-------------------------------------------------------------------------
+
+class ArgumentParserWithCustomError(argparse.ArgumentParser):
+  def error( self, msg = "" ):
+    if ( msg ): print("\n ERROR: %s" % msg)
+    print("")
+    file = open( sys.argv[0] )
+    for ( lineno, line ) in enumerate( file ):
+      if ( line[0] != '#' ): sys.exit(msg != "")
+      if ( (lineno == 2) or (lineno >= 4) ): print( line[1:].rstrip("\n") )
+
+def parse_cmdline():
+  p = ArgumentParserWithCustomError( add_help=False )
+
+  p.add_argument( "-h", "--help",    action="store_true" )
+  p.add_argument( "-v", "--verbose", action="store_true" )
+  p.add_argument( "-t", "--top",     type=str, default="RefModule" )
+  p.add_argument( "-l", "--lib",     type=str, default="/usr/share/yosys/cmos_cells.lib" )
+  p.add_argument( "-s", "--sv",      action="store_true" )
+  p.add_argument( "input_file" )
+  p.add_argument( "output_file" )
+
+  opts = p.parse_args()
+  if opts.help: p.error()
+  return opts
+
+#-------------------------------------------------------------------------
+# Main
+#-------------------------------------------------------------------------
+
+def main():
+  opts = parse_cmdline()
+  
+  if opts.verbose:
+    print(f"Input file: {opts.input_file}")
+    print(f"Output file: {opts.output_file}")
+    print(f"Top module: {opts.top}")
+    print(f"Cell library: {opts.lib}")
+    print(f"SystemVerilog mode: {opts.sv}")
+  
+  # Check if cell library exists
+  if not os.path.exists(opts.lib):
+    print(f"Error: Cell library not found: {opts.lib}")
+    return 1
+    
+  # Check if input file exists
+  if not os.path.exists(opts.input_file):
+    print(f"Error: Input file not found: {opts.input_file}")
+    return 1
+  
+  # Create a direct Yosys script file with proper technology mapping
+  with tempfile.NamedTemporaryFile(mode='w', suffix='.ys', delete=False) as tmp:
+    script_path = tmp.name
+    tmp.write(f"""
+# Read the input file
+{"read_verilog -sv" if opts.sv else "read_verilog"} {opts.input_file}
+
+# Set top module
+hierarchy -top {opts.top}
+
+# High-level synthesis and optimization
+proc; fsm; opt; memory; opt
+
+# Technology mapping
+techmap; opt
+
+# Map sequential elements (flip-flops)
+dfflibmap -liberty {opts.lib}
+
+# Map combinational logic to standard cells
+abc -liberty {opts.lib}
+
+# Clean up
+clean
+
+# Write the gate-level netlist
+write_verilog -noattr {opts.output_file}
+
+# Print statistics
+stat
+""")
+  
+  try:
+    # Run Yosys
+    cmd = ["yosys", "-q", script_path]
+    if opts.verbose:
+      cmd.remove("-q")
+      
+    result = subprocess.run(cmd, capture_output=not opts.verbose, text=True)
+    
+    if result.returncode != 0:
+      print(f"Error: Yosys synthesis failed with return code {result.returncode}")
+      if not opts.verbose:
+        print(result.stderr)
+      return 1
+      
+    if opts.verbose:
+      print(f"Successfully synthesized {opts.input_file} to {opts.output_file}")
+    
+  finally:
+    # Clean up temporary file
+    os.unlink(script_path)
+    
+  return 0
+
+if __name__ == "__main__":
+  sys.exit(main())
