@@ -1,5 +1,32 @@
 # VerilogEval Overview
 
+## Netlist-to-RTL fork
+
+This fork of [NVlabs/verilog-eval](https://github.com/NVlabs/verilog-eval) adds a
+`netlist-to-rtl` task, in which the model is given a synthesized gate-level
+netlist and has to recover RTL that passes the original testbench.
+
+Additions over upstream:
+
+ - `dataset_netlist-to-rtl/`: netlists, prompts, reference RTL and testbenches
+ - `scripts/generate-netlist-dataset` and `scripts/synth-to-netlist`: build the
+   dataset from `dataset_spec-to-rtl/`
+ - `scripts/sv-generate`: `netlist-to-rtl` task, Gemini and Anthropic clients
+ - `scripts/sv-iv-analyze`: pass@k columns and a summary row in `summary.csv`
+ - `scripts/prompt_variants/`: standard and chain-of-thought few-shot prompts
+ - `create_quartile_experiments.sh` and `quartiles/`: run the task per
+   difficulty quartile
+
+```
+$ ./create_quartile_experiments.sh -h
+$ ./create_quartile_experiments.sh -m gpt4.1-mini -p cot -q q1 -r 1
+```
+
+`create_quartile_experiments.sh` copies the selected prompt variant over
+`scripts/verilog-example-prefix_netlist-to-rtl_2-shot.txt` before each run.
+
+The rest of this file is the upstream README.
+
 This is an evaluation harness for the VerilogEval problem solving dataset originally described in the paper "[VerilogEval: Evaluating Large Language Models for Verilog Code Generation](https://arxiv.org/abs/2309.07544)," published in 2023. In August 2024, this repository was revised to cover specification-to-RTL tasks in addition to the original code completion task, add in-context learning examples to prompts, and categorize common iverilog failures. Please see the related apaper "[Revisiting VerilogEval: Newer LLMs, In-Context Learning, and Specification-to-RTL Tasks](https://arxiv.org/abs/2408.11053)," published in 2024.
 
 **If you would like to benchmark against the original VerilogEval 1.0 harness, please checkout Git branch "release/1.0.0" which has been kept to preserve this original benchmark. Otherwise, the main branch can be used for the improved harness.**
