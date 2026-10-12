@@ -1,3 +1,4 @@
+SHELL=/bin/bash
 #=========================================================================
 # Makefile
 #=========================================================================
@@ -115,7 +116,6 @@ endif
 define problem_template
 
 # Figure out number of samples for this problem
-
 sample_num_strs != seq --format "%02g" 1 $$($(1)_num_samples)
 
 # Generate verilog samples
